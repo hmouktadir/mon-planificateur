@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tableau de Bord : Organisation des Tâches Intelligente</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        stone: {
+                            50: '#fafaf9',
+                            100: '#f5f5f4',
+                            200: '#e7e5e4',
+                            300: '#d6d3d1',
+                            400: '#a8a29e',
+                            600: '#57534e',
+                            800: '#292524',
+                            900: '#1c1917',
+                        },
+                        earth: {
+                            red: '#fee2e2',
+                            reddark: '#b91c1c',
+                            blue: '#e0e7ff',
+                            bluedark: '#4338ca',
+                            yellow: '#fef3c7',
+                            yellowdark: '#b45309',
+                            green: '#dcfce7',
+                            greendark: '#15803d',
+                            gray: '#f3f4f6',
+                            graydark: '#4b5563',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        body { background-color: #fafaf9; color: #1c1917; font-family: 'Inter', sans-serif; }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 250px;
+        }
+        .tab-active { border-bottom: 2px solid #292524; font-weight: 600; color: #1c1917; }
+        .tab-inactive { color: #78716c; }
+        .tab-inactive:hover { color: #44403c; }
+        
+        /* Drag and drop styling */
+        .draggable {
+            cursor: grab;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .draggable:active {
+            cursor: grabbing;
+        }
+        .drag-over {
+            border: 2px dashed #a8a29e !important;
+            background-color: rgba(231, 229, 228, 0.4) !important;
+        }
+        .dropzone {
+            transition: background-color 0.2s, border-color 0.2s;
+            min-height: 100px;
+        }
+        
+        /* Custom scrollbar for better styling */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f5f5f4;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #d6d3d1;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="min-h-screen antialiased pb-12">
+
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+        
+        <!-- Header with database connection status -->
+        <header class="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+                <h1 class="text-3xl md:text-4xl font-bold text-stone-900 mb-2 tracking-tight flex items-center gap-3">
+                    🧠 Planificateur Idéal
+                </h1>
+                <p class="text-stone-600 max-w-xl text-sm md:text-base">
+                    Le bazar trié en plan d'action logique. Glissez-déposez vos idées en temps réel.
+                </p>
+            </div>
+            
+            <!-- Connection Status Card -->
+            <div class="bg-white rounded-xl shadow-sm border border-stone-200 p-3 flex flex-col gap-1 text-xs max-w-xs">
+                <div class="flex items-center gap-2">
+                    <span id="db-status-dot" class="w-3 h-3 rounded-full bg-yellow-500 animate-pulse"></span>
+                    <span id="db-status-text" class="font-medium text-stone-700">Connexion à la base de données...</span>
+                </div>
+                <div class="text-[10px] text-stone-400 select-all truncate" id="user-id-display">
+                    ID: Authentification...
+                </div>
+            </div>
+        </header>
+
+        <!-- Notification Toast -->
+        <div id="toast" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 bg-stone-900 text-white px-4 py-3 rounded-lg shadow-lg text-sm flex items-center gap-2">
+            <span id="toast-icon">ℹ️</span>
+            <span id="toast-message">Message</span>
+        </div>
+
+        <nav class="flex overflow-x-auto border-b border-stone-200 mb-8 pb-1 custom-scrollbar">
+            <button onclick="switchTab('overview')" id="tab-overview" class="tab-active px-4 py-2 text-sm md:text-base whitespace-nowrap transition-colors">📊 Vue d'ensemble</button>
+            <button onclick="switchTab('eisenhower')" id="tab-eisenhower" class="tab-inactive px-4 py-2 text-sm md:text-base whitespace-nowrap transition-colors">🧭 Matrice d'Eisenhower</button>
+            <button onclick="switchTab('domaines')" id="tab-domaines" class="tab-inactive px-4 py-2 text-sm md:text-base whitespace-nowrap transition-colors">📂 Domaines de Vie</button>
+            <button onclick="switchTab('inbox')" id="tab-inbox" class="tab-inactive px-4 py-2 text-sm md:text-base whitespace-nowrap transition-colors">📥 Boîte & Idées Rapides</button>
+        </nav>
+
+        <main>
+            
+            <section id="sec-overview" class="block">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+                    <!-- Quick Stats -->
+                    <div class="bg-white rounded-xl shadow-sm border border-stone-200 p-5 flex flex-col justify-between">
+                        <div>
+                            <span class="text-xs font-bold tracking-wider text-stone-400 uppercase">Progression Globale</span>
+                            <h3 class="text-3xl font-bold text-stone-800 mt-1" id="stat-progress-percent">0%</h3>
+                        </div>
+                        <div class="mt-4">
+                            <div class="w-full bg-stone-100 rounded-full h-2">
+                                <div id="stat-progress-bar" class="bg-stone-800 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                            </div>
+                            <p class="text-xs text-stone-500 mt-2"><span id="stat-completed-count">0</span> de <span id="stat-total-count">0</span> tâches terminées</p>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-xl shadow-sm border border-stone-200 p-5">
+                        <span class="text-xs font-bold tracking-wider text-stone-400 uppercase">La Règle d'or</span>
+                        <div class="flex gap-3 items-start mt-2">
+                            <span class="text-2xl mt-1">⏱️</span>
+                            <div>
+                                <h4 class="font-semibold text-sm text-stone-800">La règle des 2 minutes</h4>
+                                <p class="text-xs text-stone-500 mt-1 leading-relaxed">
+                                    Si une idée prend moins de deux minutes, ne la stockez pas dans la base de données : faites-la immédiatement !
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-xl shadow-sm border border-stone-200 p-5">
+                        <span class="text-xs font-bold tracking-wider text-stone-400 uppercase">Tri Intelligent (Idée Idéale)</span>
+                        <div class="flex gap-3 items-start mt-2">
+                            <span class="text-2xl mt-1">💡</span>
+                            <div>
+                                <h4 class="font-semibold text-sm text-stone-800">Concept du vide-esprit</h4>
+                                <p class="text-xs text-stone-500 mt-1 leading-relaxed">
+                                    Jetez tout en vrac dans la <strong>Boîte & Idées Rapides</strong>, puis passez dans l'onglet Matrice pour organiser vos priorités simplement.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chart Analysis -->
+                <div class="bg-white rounded-xl shadow-sm border border-stone-200 p-6 md:p-8">
+                    <h2 class="text-xl font-bold text-stone-800 mb-2">Analyse de la Charge Mentale active</h2>
+                    <p class="text-stone-500 text-sm mb-6">Répartition réelle de vos tâches stockées dans le Cloud.</p>
+                    
+                    <div class="flex flex-col md:flex-row items-center justify-center gap-8">
+                        <div class="w-full md:w-1/2 flex justify-center">
+                            <div class="chart-container">
+                                <canvas id="taskDistributionChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="w-full md:w-1/2 space-y-3">
+                            <div class="flex items-center justify-between p-2.5 bg-earth-red bg-opacity-20 rounded-lg">
+                                <span class="font-semibold text-xs text-earth-reddark">🔥 Urgent & Important</span>
+                                <span class="text-xs font-bold text-stone-700" id="badge-count-q1">0 tâches</span>
+                            </div>
+                            <div class="flex items-center justify-between p-2.5 bg-earth-blue bg-opacity-20 rounded-lg">
+                                <span class="font-semibold text-xs text-earth-bluedark">📅 Important, Non Urgent</span>
+                                <span class="text-xs font-bold text-stone-700" id="badge-count-q2">0 tâches</span>
+                            </div>
+                            <div class="flex items-center justify-between p-2.5 bg-earth-yellow bg-opacity-20 rounded-lg">
+                                <span class="font-semibold text-xs text-earth-yellowdark">⚡ Urgent, Peu Important</span>
+                                <span class="text-xs font-bold text-stone-700" id="badge-count-q3">0 tâches</span>
+                            </div>
+                            <div class="flex items-center justify-between p-2.5 bg-earth-gray rounded-lg">
+                                <span class="font-semibold text-xs text-earth-graydark">☁️ Ni Urgent, Ni Important</span>
+                                <span class="text-xs font-bold text-stone-700" id="badge-count-q4">0 tâches</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="sec-eisenhower" class="hidden">
+                <div class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-stone-800">Matrice de Priorisation Interactive</h2>
+                        <p class="text-xs text-stone-500 mt-1">Glissez-déposez des tâches d'un quadrant à un autre ou ajoutez-les directement.</p>
+                    </div>
+                    <button onclick="openAddTaskModal()" class="bg-stone-800 hover:bg-stone-950 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors flex items-center gap-1">
+                        ➕ Créer une tâche
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    
+                    <!-- Q1: Urgent et Important -->
+                    <div class="bg-earth-red bg-opacity-20 border border-earth-red border-opacity-60 rounded-xl p-5 shadow-sm flex flex-col h-[320px]">
+                        <div class="flex items-center justify-between mb-3 border-b border-earth-red border-opacity-30 pb-2">
+                            <h3 class="text-sm font-bold text-earth-reddark flex items-center gap-2"><span class="text-base">🔥</span> Urgent & Important</h3>
+                            <span class="text-[10px] font-bold bg-white text-earth-reddark px-2 py-0.5 rounded-full shadow-sm">FAIRE DIRECTEMENT</span>
+                        </div>
+                        <div id="dropzone-q1" data-quadrant="q1" class="dropzone flex-grow overflow-y-auto custom-scrollbar space-y-2 pb-4">
+                            <!-- Tasks loaded dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Q2: Important non Urgent -->
+                    <div class="bg-earth-blue bg-opacity-20 border border-earth-blue border-opacity-60 rounded-xl p-5 shadow-sm flex flex-col h-[320px]">
+                        <div class="flex items-center justify-between mb-3 border-b border-earth-blue border-opacity-30 pb-2">
+                            <h3 class="text-sm font-bold text-earth-bluedark flex items-center gap-2"><span class="text-base">📅</span> Important, Non Urgent</h3>
+                            <span class="text-[10px] font-bold bg-white text-earth-bluedark px-2 py-0.5 rounded-full shadow-sm">PLANIFIER</span>
+                        </div>
+                        <div id="dropzone-q2" data-quadrant="q2" class="dropzone flex-grow overflow-y-auto custom-scrollbar space-y-2 pb-4">
+                            <!-- Tasks loaded dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Q3: Urgent peu Important -->
+                    <div class="bg-earth-yellow bg-opacity-20 border border-earth-yellow border-opacity-60 rounded-xl p-5 shadow-sm flex flex-col h-[320px]">
+                        <div class="flex items-center justify-between mb-3 border-b border-earth-yellow border-opacity-30 pb-2">
+                            <h3 class="text-sm font-bold text-earth-yellowdark flex items-center gap-2"><span class="text-base">⚡</span> Urgent, Peu Important</h3>
+                            <span class="text-[10px] font-bold bg-white text-earth-yellowdark px-2 py-0.5 rounded-full shadow-sm">DÉLÉGUER/LIMITER</span>
+                        </div>
+                        <div id="dropzone-q3" data-quadrant="q3" class="dropzone flex-grow overflow-y-auto custom-scrollbar space-y-2 pb-4">
+                            <!-- Tasks loaded dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Q4: Ni Urgent ni Important -->
+                    <div class="bg-stone-100 border border-stone-200 rounded-xl p-5 shadow-sm flex flex-col h-[320px]">
+                        <div class="flex items-center justify-between mb-3 border-b border-stone-300 pb-2">
+                            <h3 class="text-sm font-bold text-stone-700 flex items-center gap-2"><span class="text-base">☁️</span> Ni Urgent, Ni Important</h3>
+                            <span class="text-[10px] font-bold bg-white text-stone-600 px-2 py-0.5 rounded-full shadow-sm">ÉLIMINER / TRIER</span>
+                        </div>
+                        <div id="dropzone-q4" data-quadrant="q4" class="dropzone flex-grow overflow-y-auto custom-scrollbar space-y-2 pb-4">
+                            <!-- Tasks loaded dynamically -->
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+            <section id="sec-domaines" class="hidden">
+                <div class="mb-6">
+                    <h2 class="text-xl font-bold text-stone-800">Organisation par Domaines de Vie</h2>
+                    <p class="text-xs text-stone-500">Permet de segmenter votre esprit selon votre rôle en un clic.</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Professional Area -->
+                    <div class="bg-white rounded-xl shadow-sm border border-stone-200 overflow-hidden flex flex-col h-[400px]">
+                        <div class="bg-stone-800 text-white p-4 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xl">💼</span>
+                                <h3 class="font-bold text-sm">Professionnel</h3>
+                            </div>
+                            <span class="text-xs font-semibold px-2 py-0.5 bg-stone-700 rounded-full" id="count-dom-work">0</span>
+                        </div>
+                        <div id="domain-work-list" class="p-4 overflow-y-auto custom-scrollbar flex-grow space-y-2">
+                            <!-- Tasks linked to work loaded dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Personal Area -->
+                    <div class="bg-white rounded-xl shadow-sm border border-stone-200 overflow-hidden flex flex-col h-[400px]">
+                        <div class="bg-stone-700 text-white p-4 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xl">🧘</span>
+                                <h3 class="font-bold text-sm">Personnel & Bien-être</h3>
+                            </div>
+                            <span class="text-xs font-semibold px-2 py-0.5 bg-stone-600 rounded-full" id="count-dom-personal">0</span>
+                        </div>
+                        <div id="domain-personal-list" class="p-4 overflow-y-auto custom-scrollbar flex-grow space-y-2">
+                            <!-- Tasks loaded dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Domestic/Home Area -->
+                    <div class="bg-white rounded-xl shadow-sm border border-stone-200 overflow-hidden flex flex-col h-[400px]">
+                        <div class="bg-stone-600 text-white p-4 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xl">🏠</span>
+                                <h3 class="font-bold text-sm">Maison & Intendance</h3>
+                            </div>
+                            <span class="text-xs font-semibold px-2 py-0.5 bg-stone-500 rounded-full" id="count-dom-home">0</span>
+                        </div>
+                        <div id="domain-home-list" class="p-4 overflow-y-auto custom-scrollbar flex-grow space-y-2">
+                            <!-- Tasks loaded dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="sec-inbox" class="hidden">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    
+                    <div class="lg:col-span-2">
+                        <div class="bg-white rounded-xl shadow-sm border border-stone-200 p-6">
+                            <h2 class="text-xl font-bold text-stone-800 mb-2 flex items-center gap-2">
+                                📥 La Boîte d'Entrée Rapide ("Le Bazar")
+                            </h2>
+                            <p class="text-xs text-stone-500 mb-6">
+                                Le secret d'un esprit libre est de vider immédiatement toute idée ici sans la sur-réfléchir. Vous la catégoriserez plus tard par simple Drag & Drop.
+                            </p>
+                            
+                            <!-- Quick add form -->
+                            <form id="quick-add-form" class="flex gap-2 mb-6">
+                                <input type="text" id="inbox-input" placeholder="Écrivez une idée en bazar à enregistrer..." 
+                                       class="flex-grow border border-stone-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-400 focus:border-transparent" required>
+                                <button type="submit" class="bg-stone-800 hover:bg-stone-900 text-white px-4 py-2 text-sm font-semibold rounded-lg transition-colors whitespace-nowrap">
+                                    Enregistrer
+                                </button>
+                            </form>
+
+                            <div class="border-t border-stone-100 pt-4">
+                                <h3 class="text-xs font-bold uppercase text-stone-400 tracking-wider mb-3">Tâches non triées ou nouvelles</h3>
+                                <div id="inbox-list" class="space-y-2 dropzone min-h-[150px] p-2 rounded-lg border-2 border-dashed border-stone-200" data-quadrant="inbox">
+                                    <!-- Dynamic unclassified inbox tasks -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Static Tips Card -->
+                    <div class="space-y-6">
+                        <div class="bg-earth-yellow bg-opacity-25 border border-earth-yellow border-opacity-50 rounded-xl p-5 shadow-sm">
+                            <h3 class="text-sm font-bold text-earth-yellowdark flex items-center gap-2 mb-2">💡 Astuce d'organisation</h3>
+                            <p class="text-xs text-stone-700 leading-relaxed">
+                                Les tâches dans la <strong>Matrice d'Eisenhower</strong> peuvent être triées ou complétées directement en cliquant sur le cercle de sélection. Pour les supprimer ou modifier leur domaine, cliquez sur le bouton d'édition à droite.
+                            </p>
+                        </div>
+                        <div class="bg-stone-800 text-stone-100 rounded-xl p-5 shadow-sm">
+                            <h3 class="text-sm font-bold flex items-center gap-2 mb-2">🔒 Base de données active</h3>
+                            <p class="text-xs text-stone-300 leading-relaxed">
+                                Vos données sont associées de manière unique et sécurisée à votre profil anonyme sur nos serveurs. Vous ne perdrez plus jamais vos idées d'organisation !
+                            </p>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Add/Edit Task Modal -->
+    <div id="task-modal" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-xl shadow-xl border border-stone-200 max-w-md w-full overflow-hidden transform transition-all">
+            <div class="p-6 border-b border-stone-100">
+                <h3 id="modal-title" class="text-lg font-bold text-stone-900">Ajouter une tâche</h3>
+            </div>
+            <form id="task-form" class="p-6 space-y-4">
+                <input type="hidden" id="task-id">
+                
+                <div>
+                    <label class="block text-xs font-bold text-stone-500 uppercase mb-1">Libellé de la tâche</label>
+                    <input type="text" id="task-title-input" class="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-400 focus:border-transparent" placeholder="Ex: Prendre rdv chez le dentiste" required>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-stone-500 uppercase mb-1">Quadrant d'Eisenhower</label>
+                        <select id="task-quadrant-select" class="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-400 focus:border-transparent">
+                            <option value="inbox">📥 Boîte (En bazar)</option>
+                            <option value="q1">🔥 Urgent & Important (Q1)</option>
+                            <option value="q2">📅 Important, Non Urgent (Q2)</option>
+                            <option value="q3">⚡ Urgent, Peu Important (Q3)</option>
+                            <option value="q4">☁️ Ni l'un ni l'autre (Q4)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-stone-500 uppercase mb-1">Domaine de vie</label>
+                        <select id="task-domain-select" class="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-400 focus:border-transparent">
+                            <option value="work">💼 Travail</option>
+                            <option value="personal">🧘 Personnel</option>
+                            <option value="home">🏠 Maison</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-2 pt-4 border-t border-stone-100">
+                    <button type="button" onclick="closeTaskModal()" class="px-4 py-2 border border-stone-200 text-stone-600 text-xs font-semibold rounded-lg hover:bg-stone-50 transition-colors">Annuler</button>
+                    <button type="submit" class="px-4 py-2 bg-stone-800 hover:bg-stone-900 text-white text-xs font-semibold rounded-lg transition-colors">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Firebase Module setup -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global state storage
+        let tasks = [];
+        let db = null;
+        let auth = null;
+        let appId = null;
+        let userId = null;
+        let chartInstance = null;
+        let currentDragElement = null;
+
+        async function initFirebaseAndApp() {
+            // Environment variable configuration
+            appId = typeof __app_id !== 'undefined' ? __app_id : 'task-dashboard-app';
+            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+                apiKey: "demo-key",
+                authDomain: "demo.firebaseapp.com",
+                projectId: "demo-project",
+                storageBucket: "demo.appspot.com",
+                messagingSenderId: "1234567",
+                appId: "12345"
+            };
+
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+
+            updateDbStatus("auth", "Authentification en cours...");
+
+            try {
+                // RULE 3: Perform authentication before any firestore queries
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (err) {
+                console.error("Auth error, attempting fallback anonymous auth...", err);
+                try {
+                    await signInAnonymously(auth);
+                } catch (fallbackErr) {
+                    console.error("Critical fallback auth failed", fallbackErr);
+                    updateDbStatus("error", "Erreur d'authentification");
+                    showToast("❌ Erreur de connexion au Cloud.", "red");
+                }
+            }
+
+            // Authentication state monitor
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    userId = user.uid;
+                    document.getElementById('user-id-display').innerText = `ID: ${userId}`;
+                    updateDbStatus("connected", "Base Cloud connectée");
+                    // Load and sync real-time tasks from Firebase
+                    startRealtimeSync();
+                } else {
+                    updateDbStatus("error", "Utilisateur déconnecté");
+                }
+            });
+        }
+
+        function startRealtimeSync() {
+            if (!userId) return;
+
+            // RULE 1: STRICT PATH
+            const tasksCollectionRef = collection(db, 'artifacts', appId, 'users', userId, 'tasks');
+            
+            // RULE 2: Simple query (no complex orderby or compounds)
+            const q = query(tasksCollectionRef);
+
+            onSnapshot(q, (snapshot) => {
+                const loadedTasks = [];
+                snapshot.forEach((doc) => {
+                    loadedTasks.push({ id: doc.id, ...doc.data() });
+                });
+                
+                tasks = loadedTasks;
+
+                // If no tasks exist, pre-populate with nice tutorial samples
+                if (tasks.length === 0) {
+                    seedDefaultTasks();
+                } else {
+                    renderAllLists();
+                    updateStatsAndCharts();
+                }
+            }, (error) => {
+                console.error("Firestore sync failure:", error);
+                showToast("⚠️ Problème de synchronisation en temps réel.", "red");
+            });
+        }
+
+        // Pre-populates default database entries for immediate trial
+        async function seedDefaultTasks() {
+            const defaults = [
+                { title: "Planifier la réunion stratégique de lundi", quadrant: "q1", domain: "work", completed: false, createdAt: Date.now() },
+                { title: "Préparer mes affaires de sport", quadrant: "q2", domain: "personal", completed: false, createdAt: Date.now() - 1000 },
+                { title: "Acheter des ampoules led de rechange", quadrant: "q3", domain: "home", completed: false, createdAt: Date.now() - 2000 },
+                { title: "Aspirer la voiture", quadrant: "q4", domain: "home", completed: false, createdAt: Date.now() - 3000 },
+                { title: "Idée folle de projet d'écriture", quadrant: "inbox", domain: "personal", completed: false, createdAt: Date.now() - 4000 }
+            ];
+
+            for (const task of defaults) {
+                const taskId = crypto.randomUUID();
+                const taskDoc = doc(db, 'artifacts', appId, 'users', userId, 'tasks', taskId);
+                await setDoc(taskDoc, task);
+            }
+        }
+
+        function updateDbStatus(type, message) {
+            const dot = document.getElementById('db-status-dot');
+            const text = document.getElementById('db-status-text');
+
+            text.textContent = message;
+            dot.className = "w-3 h-3 rounded-full animate-pulse ";
+
+            if (type === "connected") {
+                dot.classList.add("bg-green-500");
+                dot.classList.remove("animate-pulse"); // Solid green when fully sync-ready
+            } else if (type === "auth") {
+                dot.classList.add("bg-yellow-500");
+            } else {
+                dot.classList.add("bg-red-500");
+            }
+        }
+
+        function renderAllLists() {
+            // Dropzones/Containers
+            const q1 = document.getElementById('dropzone-q1');
+            const q2 = document.getElementById('dropzone-q2');
+            const q3 = document.getElementById('dropzone-q3');
+            const q4 = document.getElementById('dropzone-q4');
+            const inboxList = document.getElementById('inbox-list');
+
+            const domWork = document.getElementById('domain-work-list');
+            const domPersonal = document.getElementById('domain-personal-list');
+            const domHome = document.getElementById('domain-home-list');
+
+            // Clear containers
+            [q1, q2, q3, q4, inboxList, domWork, domPersonal, domHome].forEach(el => el.innerHTML = '');
+
+            // Counters for domains
+            let workCount = 0;
+            let personalCount = 0;
+            let homeCount = 0;
+
+            // Sort tasks by date created so new items stay on top or bottom
+            const sortedTasks = [...tasks].sort((a, b) => b.createdAt - a.createdAt);
+
+            sortedTasks.forEach(task => {
+                const taskEl = createTaskElement(task);
+
+                // Add to Eisenhower matrix zones
+                if (task.quadrant === 'q1') q1.appendChild(taskEl.cloneNode(true));
+                else if (task.quadrant === 'q2') q2.appendChild(taskEl.cloneNode(true));
+                else if (task.quadrant === 'q3') q3.appendChild(taskEl.cloneNode(true));
+                else if (task.quadrant === 'q4') q4.appendChild(taskEl.cloneNode(true));
+                else if (task.quadrant === 'inbox') inboxList.appendChild(taskEl.cloneNode(true));
+
+                // Add to Life Domains lists
+                if (task.domain === 'work') {
+                    domWork.appendChild(createDomainTaskElement(task));
+                    workCount++;
+                } else if (task.domain === 'personal') {
+                    domPersonal.appendChild(createDomainTaskElement(task));
+                    personalCount++;
+                } else if (task.domain === 'home') {
+                    domHome.appendChild(createDomainTaskElement(task));
+                    homeCount++;
+                }
+            });
+
+            // Update domain counters labels
+            document.getElementById('count-dom-work').innerText = workCount;
+            document.getElementById('count-dom-personal').innerText = personalCount;
+            document.getElementById('count-dom-home').innerText = homeCount;
+
+            // Re-bind interactive events dynamically to newly created elements
+            bindInteractiveEvents();
+        }
+
+        // Creates a default draggable Matrix element
+        function createTaskElement(task) {
+            const div = document.createElement('div');
+            div.className = `draggable task-item bg-white p-3 rounded-lg shadow-sm border border-stone-100 flex items-start justify-between gap-3 ${task.completed ? 'opacity-50 line-through' : ''}`;
+            div.setAttribute('draggable', 'true');
+            div.setAttribute('data-id', task.id);
+
+            // Left selector + text
+            const leftDiv = document.createElement('div');
+            leftDiv.className = "flex items-start gap-2.5 flex-grow cursor-pointer";
+            leftDiv.onclick = () => window.toggleTaskCompletion(task.id, task.completed);
+
+            const checkSpan = document.createElement('span');
+            checkSpan.className = `mt-0.5 text-xs font-bold ${task.completed ? 'text-green-600' : 'text-stone-300'}`;
+            checkSpan.innerHTML = task.completed ? '✓' : '○';
+
+            const titleSpan = document.createElement('span');
+            titleSpan.className = "text-stone-800 text-xs font-medium leading-relaxed";
+            titleSpan.textContent = task.title;
+
+            leftDiv.appendChild(checkSpan);
+            leftDiv.appendChild(titleSpan);
+
+            // Action buttons (Edit, Delete)
+            const rightDiv = document.createElement('div');
+            rightDiv.className = "flex items-center gap-1.5 shrink-0";
+
+            // Small domain indicator pill
+            const domainPill = document.createElement('span');
+            domainPill.className = "text-[9px] px-1.5 py-0.5 rounded font-bold uppercase " + 
+                (task.domain === 'work' ? 'bg-stone-800 text-white' : 
+                 task.domain === 'personal' ? 'bg-stone-200 text-stone-700' : 'bg-stone-100 text-stone-600');
+            domainPill.innerText = task.domain === 'work' ? '💼' : task.domain === 'personal' ? '🧘' : '🏠';
+            rightDiv.appendChild(domainPill);
+
+            const editBtn = document.createElement('button');
+            editBtn.className = "text-stone-400 hover:text-stone-900 text-xs p-1";
+            editBtn.innerHTML = "✏️";
+            editBtn.title = "Modifier";
+            editBtn.onclick = (e) => { e.stopPropagation(); window.openEditModal(task); };
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = "text-stone-400 hover:text-red-600 text-xs p-1";
+            deleteBtn.innerHTML = "×";
+            deleteBtn.title = "Supprimer";
+            deleteBtn.onclick = (e) => { e.stopPropagation(); window.deleteTask(task.id); };
+
+            rightDiv.appendChild(editBtn);
+            rightDiv.appendChild(deleteBtn);
+
+            div.appendChild(leftDiv);
+            div.appendChild(rightDiv);
+
+            return div;
+        }
+
+        // Creates a simplified display for Life Domain columns
+        function createDomainTaskElement(task) {
+            const div = document.createElement('div');
+            div.className = `p-2.5 rounded border border-stone-100 flex items-center justify-between text-xs ${task.completed ? 'bg-stone-50 opacity-40 line-through' : 'bg-stone-50'}`;
+            
+            const leftSpan = document.createElement('span');
+            leftSpan.className = "text-stone-700 font-medium truncate max-w-[200px]";
+            leftSpan.textContent = task.title;
+
+            // Small priority pill
+            const quadPill = document.createElement('span');
+            quadPill.className = "text-[9px] px-1.5 py-0.5 rounded font-bold uppercase " +
+                (task.quadrant === 'q1' ? 'bg-earth-red text-earth-reddark' :
+                 task.quadrant === 'q2' ? 'bg-earth-blue text-earth-bluedark' :
+                 task.quadrant === 'q3' ? 'bg-earth-yellow text-earth-yellowdark' : 'bg-stone-200 text-stone-600');
+            
+            quadPill.innerText = task.quadrant === 'q1' ? '🔥 Urgent' :
+                                 task.quadrant === 'q2' ? '📅 Important' :
+                                 task.quadrant === 'q3' ? '⚡ Secondaire' : '☁️ Basse';
+
+            div.appendChild(leftSpan);
+            div.appendChild(quadPill);
+            return div;
+        }
+
+        function bindInteractiveEvents() {
+            const draggables = document.querySelectorAll('.draggable');
+            const dropzones = document.querySelectorAll('.dropzone');
+
+            draggables.forEach(draggable => {
+                draggable.addEventListener('dragstart', (e) => {
+                    currentDragElement = draggable;
+                    draggable.classList.add('opacity-45');
+                    e.dataTransfer.setData('text/plain', draggable.getAttribute('data-id'));
+                });
+
+                draggable.addEventListener('dragend', () => {
+                    draggable.classList.remove('opacity-45');
+                    currentDragElement = null;
+                });
+            });
+
+            dropzones.forEach(zone => {
+                zone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    zone.classList.add('drag-over');
+                });
+
+                zone.addEventListener('dragleave', () => {
+                    zone.classList.remove('drag-over');
+                });
+
+                zone.addEventListener('drop', async (e) => {
+                    e.preventDefault();
+                    zone.classList.remove('drag-over');
+                    const taskId = e.dataTransfer.getData('text/plain');
+                    const newQuadrant = zone.getAttribute('data-quadrant');
+
+                    if (taskId && newQuadrant) {
+                        await window.updateTaskQuadrant(taskId, newQuadrant);
+                    }
+                });
+            });
+        }
+
+        function updateStatsAndCharts() {
+            const total = tasks.length;
+            const completed = tasks.filter(t => t.completed).length;
+            const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+            // DOM elements
+            document.getElementById('stat-progress-percent').innerText = `${completionRate}%`;
+            document.getElementById('stat-progress-bar').style.width = `${completionRate}%`;
+            document.getElementById('stat-completed-count').innerText = completed;
+            document.getElementById('stat-total-count').innerText = total;
+
+            // Counts by quadrant for the chart and sidebar badges
+            const countQ1 = tasks.filter(t => t.quadrant === 'q1').length;
+            const countQ2 = tasks.filter(t => t.quadrant === 'q2').length;
+            const countQ3 = tasks.filter(t => t.quadrant === 'q3').length;
+            const countQ4 = tasks.filter(t => t.quadrant === 'q4').length;
+
+            document.getElementById('badge-count-q1').innerText = `${countQ1} tâches`;
+            document.getElementById('badge-count-q2').innerText = `${countQ2} tâches`;
+            document.getElementById('badge-count-q3').innerText = `${countQ3} tâches`;
+            document.getElementById('badge-count-q4').innerText = `${countQ4} tâches`;
+
+            // Draw/update Chart JS
+            renderChart(countQ1, countQ2, countQ3, countQ4);
+        }
+
+        function renderChart(q1, q2, q3, q4) {
+            const ctx = document.getElementById('taskDistributionChart').getContext('2d');
+
+            if (chartInstance) {
+                // If chart exists, just update data to prevent hover flashing
+                chartInstance.data.datasets[0].data = [q1, q2, q3, q4];
+                chartInstance.update();
+                return;
+            }
+
+            chartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: [
+                        'Urgent & Important', 
+                        'Important, Non Urgent', 
+                        'Urgent, Peu Important', 
+                        'Ni l\'un, Ni l\'autre'
+                    ],
+                    datasets: [{
+                        data: [q1, q2, q3, q4],
+                        backgroundColor: [
+                            '#fee2e2', 
+                            '#e0e7ff', 
+                            '#fef3c7', 
+                            '#f3f4f6'  
+                        ],
+                        borderColor: [
+                            '#f87171', 
+                            '#818cf8', 
+                            '#fbbf24', 
+                            '#9ca3af'  
+                        ],
+                        borderWidth: 1.5,
+                        hoverOffset: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false // Kept custom list labels for better mobile views
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (context.parsed !== null) {
+                                        label += ` : ${context.parsed} tâche(s)`;
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    cutout: '75%'
+                }
+            });
+        }
+
+        // Set Task completion in DB
+        window.toggleTaskCompletion = async function(taskId, currentStatus) {
+            if (!userId) return;
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'users', userId, 'tasks', taskId);
+                await updateDoc(docRef, { completed: !currentStatus });
+                showToast("Statut de la tâche mis à jour ! ✓", "green");
+            } catch (err) {
+                console.error("Failed completion toggle:", err);
+            }
+        };
+
+        // Update quadrant on Drag-and-drop
+        window.updateTaskQuadrant = async function(taskId, newQuadrant) {
+            if (!userId) return;
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'users', userId, 'tasks', taskId);
+                await updateDoc(docRef, { quadrant: newQuadrant });
+                showToast("Tâche réorganisée avec succès !", "green");
+            } catch (err) {
+                console.error("Failed quadrant move:", err);
+            }
+        };
+
+        // Delete Task from DB
+        window.deleteTask = async function(taskId) {
+            if (!userId) return;
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'users', userId, 'tasks', taskId);
+                await deleteDoc(docRef);
+                showToast("Tâche supprimée définitivement.", "stone");
+            } catch (err) {
+                console.error("Failed deletion:", err);
+            }
+        };
+
+        // Add item from Quick Add "Bazar" form
+        document.getElementById('quick-add-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const input = document.getElementById('inbox-input');
+            const title = input.value.trim();
+            if (!title || !userId) return;
+
+            try {
+                const newId = crypto.randomUUID();
+                const docRef = doc(db, 'artifacts', appId, 'users', userId, 'tasks', newId);
+                await setDoc(docRef, {
+                    title: title,
+                    quadrant: 'inbox',
+                    domain: 'personal', // Default domain
+                    completed: false,
+                    createdAt: Date.now()
+                });
+                input.value = '';
+                showToast("Idée enregistrée dans le bazar ! 📥", "stone");
+            } catch (err) {
+                console.error("Failed quick add:", err);
+            }
+        });
+
+        // Global Modal triggers
+        const modal = document.getElementById('task-modal');
+        const modalForm = document.getElementById('task-form');
+
+        window.openAddTaskModal = function() {
+            document.getElementById('modal-title').innerText = "Ajouter une tâche";
+            document.getElementById('task-id').value = "";
+            document.getElementById('task-title-input').value = "";
+            document.getElementById('task-quadrant-select').value = "q1";
+            document.getElementById('task-domain-select').value = "work";
+            modal.classList.remove('hidden');
+        };
+
+        window.openEditModal = function(task) {
+            document.getElementById('modal-title').innerText = "Modifier la tâche";
+            document.getElementById('task-id').value = task.id;
+            document.getElementById('task-title-input').value = task.title;
+            document.getElementById('task-quadrant-select').value = task.quadrant;
+            document.getElementById('task-domain-select').value = task.domain;
+            modal.classList.remove('hidden');
+        };
+
+        window.closeTaskModal = function() {
+            modal.classList.add('hidden');
+        };
+
+        // Handle modal submit
+        modalForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('task-id').value;
+            const title = document.getElementById('task-title-input').value.trim();
+            const quadrant = document.getElementById('task-quadrant-select').value;
+            const domain = document.getElementById('task-domain-select').value;
+
+            if (!title || !userId) return;
+
+            try {
+                if (id) {
+                    // Update existing
+                    const docRef = doc(db, 'artifacts', appId, 'users', userId, 'tasks', id);
+                    await updateDoc(docRef, { title, quadrant, domain });
+                    showToast("Tâche modifiée avec succès !", "green");
+                } else {
+                    // Create new
+                    const newId = crypto.randomUUID();
+                    const docRef = doc(db, 'artifacts', appId, 'users', userId, 'tasks', newId);
+                    await setDoc(docRef, {
+                        title,
+                        quadrant,
+                        domain,
+                        completed: false,
+                        createdAt: Date.now()
+                    });
+                    showToast("Nouvelle tâche ajoutée !", "green");
+                }
+                closeTaskModal();
+            } catch (err) {
+                console.error("Modal submit failed:", err);
+            }
+        });
+
+        // Start everything on startup
+        window.addEventListener('load', () => {
+            initFirebaseAndApp();
+        });
+
+    </script>
+
+    <script>
+        // Tab switching engine
+        const tabList = ['overview', 'eisenhower', 'domaines', 'inbox'];
+        function switchTab(tabId) {
+            tabList.forEach(t => {
+                const sec = document.getElementById('sec-' + t);
+                const button = document.getElementById('tab-' + t);
+                
+                if (t === tabId) {
+                    sec.classList.remove('hidden');
+                    button.classList.add('tab-active');
+                    button.classList.remove('tab-inactive');
+                } else {
+                    sec.classList.add('hidden');
+                    button.classList.remove('tab-active');
+                    button.classList.add('tab-inactive');
+                }
+            });
+        }
+
+        // Custom alert toast system to avoid using native browser alert()
+        function showToast(message, color = "stone") {
+            const toast = document.getElementById('toast');
+            const icon = document.getElementById('toast-icon');
+            const msgEl = document.getElementById('toast-message');
+
+            msgEl.textContent = message;
+
+            if (color === "red") {
+                toast.className = "fixed bottom-5 right-5 z-50 bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg text-sm flex items-center gap-2 transition-all duration-300 transform translate-y-0 opacity-100";
+                icon.textContent = "❌";
+            } else if (color === "green") {
+                toast.className = "fixed bottom-5 right-5 z-50 bg-green-700 text-white px-4 py-3 rounded-lg shadow-lg text-sm flex items-center gap-2 transition-all duration-300 transform translate-y-0 opacity-100";
+                icon.textContent = "✓";
+            } else {
+                toast.className = "fixed bottom-5 right-5 z-50 bg-stone-800 text-stone-100 px-4 py-3 rounded-lg shadow-lg text-sm flex items-center gap-2 transition-all duration-300 transform translate-y-0 opacity-100";
+                icon.textContent = "📥";
+            }
+
+            // Hide after 3 seconds
+            setTimeout(() => {
+                toast.className = "fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 text-sm flex items-center gap-2";
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
