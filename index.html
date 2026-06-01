@@ -429,14 +429,15 @@
         async function initFirebaseAndApp() {
             // Environment variable configuration
             appId = typeof __app_id !== 'undefined' ? __app_id : 'task-dashboard-app';
-            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-                apiKey: "demo-key",
-                authDomain: "demo.firebaseapp.com",
-                projectId: "demo-project",
-                storageBucket: "demo.appspot.com",
-                messagingSenderId: "1234567",
-                appId: "12345"
-            };
+                const firebaseConfig = {
+                  apiKey: "AIzaSyDf3ozDmHo9Ic56186OJhNYPZWPG_BoV5g",
+                  authDomain: "planificateur-7e238.firebaseapp.com",
+                  projectId: "planificateur-7e238",
+                  storageBucket: "planificateur-7e238.firebasestorage.app",
+                  messagingSenderId: "837407214330",
+                  appId: "1:837407214330:web:538f9a60c29064ea599743",
+                  measurementId: "G-59M0K4XK0Z"
+                };
 
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
